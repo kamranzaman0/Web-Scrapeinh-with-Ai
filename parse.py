@@ -1,6 +1,11 @@
-import streamlit as st  # Import streamlit for logging/debugging
+import asyncio
+import streamlit as st  
+from concurrent.futures import ThreadPoolExecutor
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
+
+
+
 
 # Define the prompt template
 template = (
@@ -15,27 +20,37 @@ template = (
 # Initialize the Ollama model
 model = OllamaLLM(model="llama3.2")
 
-# Define the function to parse content with Ollama
-def parse_with_ollama(dom_chunks, parse_description):
+
+
+async def async_parse_with_ollama(dom_chunks, parse_description):
+    loop = asyncio.get_event_loop()
     prompt = ChatPromptTemplate.from_template(template)
     chain = prompt | model
 
-    parsed_results = []
 
-    # Loop over each chunk of DOM content
-    for i, chunk in enumerate(dom_chunks, start=1):
-        st.write(f"Parsing batch {i} of {len(dom_chunks)}...")  # Add a log to Streamlit for debugging
+    # # parsed_results = []
+    # for i, chunk in enumerate(dom_chunks, start=1):
+    #     st.write(f"Parsing batch {i} of {len(dom_chunks)}...")  
 
-        # Invoke the model with the current chunk and the parse description
+    #     try:
+    #         response = chain.invoke(
+    #             {"dom_content": chunk, "parse_description": parse_description}
+    #         )
+    #         print(f"Parsed batch: {i} of {len(dom_chunks)}")  # Print to terminal for debugging
+    #         parsed_results.append(response)  # Append response to results
+    #     except Exception as e:
+    #         print(f"Error in parsing chunk {i}: {str(e)}")  # Handle errors and log them
+    #         parsed_results.append(f"Error parsing batch {i}")
+
+    def call_ollama(chunk):
         try:
-            response = chain.invoke(
-                {"dom_content": chunk, "parse_description": parse_description}
-            )
-            print(f"Parsed batch: {i} of {len(dom_chunks)}")  # Print to terminal for debugging
-            parsed_results.append(response)  # Append response to results
+            response = chain.invoke({"dom_content": chunk, "parse_description": parse_description})
+            return response
         except Exception as e:
-            print(f"Error in parsing chunk {i}: {str(e)}")  # Handle errors and log them
-            parsed_results.append(f"Error parsing batch {i}")
+            return f"Error parsing chunk: {str(e)}"
+        
+    with ThreadPoolExecutor() as executor:
+        tasks = [loop.run_in_executor(executor, call_ollama, chunk) for chunk in dom_chunks]
+        parsed_results = await asyncio.gather(*tasks)
 
-    # Join all parsed results
     return "\n".join(parsed_results)
